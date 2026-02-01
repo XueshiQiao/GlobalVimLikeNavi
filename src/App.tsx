@@ -1,29 +1,72 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import "./App.css";
 
 function App() {
   const [status, setStatus] = useState("Initializing...");
+  const [autostart, setAutostart] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
-    async function fetchStatus() {
+    let unlisten: () => void;
+
+    async function init() {
       try {
         const msg = await invoke("get_status");
         setStatus(msg as string);
+        const auto = await isEnabled();
+        setAutostart(auto);
+
+        unlisten = await listen<boolean>("status-update", (event) => {
+          const paused = event.payload;
+          setStatus(paused ? "Paused" : "Running");
+          // Optionally show toast here too?
+        });
       } catch (e) {
         setStatus("Error connecting to backend");
+        console.error(e);
       }
     }
-    fetchStatus();
+    init();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
   }, []);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   async function togglePause() {
     try {
       const shouldPause = status === "Running";
       const newStatus = await invoke("set_paused", { paused: shouldPause });
       setStatus(newStatus as string);
+      showToast(shouldPause ? "Service Paused" : "Service Resumed", "success");
     } catch (e) {
       console.error("Failed to toggle pause", e);
+      showToast("Failed to toggle service", "error");
+    }
+  }
+
+  async function toggleAutostart() {
+    try {
+      if (autostart) {
+        await disable();
+        setAutostart(false);
+        showToast("Start with Windows disabled", "success");
+      } else {
+        await enable();
+        setAutostart(true);
+        showToast("Start with Windows enabled", "success");
+      }
+    } catch (e) {
+      console.error("Failed to toggle autostart", e);
+      showToast("Failed to change settings", "error");
     }
   }
 
@@ -35,8 +78,24 @@ function App() {
   const pingColor = isRunning ? "bg-green-400" : isPaused ? "bg-amber-400" : "bg-red-400";
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6 select-none overflow-y-auto">
+    <main className="flex flex-col items-center justify-center min-h-screen bg-background p-6 select-none overflow-y-auto relative">
       
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-10 left-1/2 z-50 px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-up border whitespace-nowrap ${
+          toast.type === "success" 
+            ? "bg-slate-800 border-green-500/50 text-green-400" 
+            : "bg-slate-800 border-red-500/50 text-red-400"
+        }`}>
+          {toast.type === "success" ? (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          )}
+          <span className="font-medium text-sm text-slate-200">{toast.message}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center mb-8 mt-10">
         <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
@@ -46,7 +105,7 @@ function App() {
       </div>
 
       {/* Status Card */}
-      <div className="w-full max-w-md bg-surface border border-slate-700 rounded-2xl p-6 shadow-xl mb-8">
+      <div className="w-full max-w-md bg-surface border border-slate-700 rounded-2xl p-6 shadow-xl mb-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Status</h2>
@@ -69,6 +128,20 @@ function App() {
             }`}
         >
           {isRunning ? <><PauseIcon /><span>Pause Service (Gaming Mode)</span></> : <><PlayIcon /><span>Resume Service</span></>}
+        </button>
+      </div>
+
+      {/* Settings Card */}
+      <div className="w-full max-w-md bg-surface border border-slate-700 rounded-2xl p-6 shadow-xl mb-8 flex items-center justify-between">
+        <div>
+           <h2 className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-1">Settings</h2>
+           <p className="text-slate-200 font-medium">Start with Windows</p>
+        </div>
+        <button 
+           onClick={toggleAutostart} 
+           className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out cursor-pointer ${autostart ? 'bg-primary' : 'bg-slate-600'}`}
+        >
+           <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${autostart ? 'translate-x-6' : 'translate-x-0'}`} />
         </button>
       </div>
 

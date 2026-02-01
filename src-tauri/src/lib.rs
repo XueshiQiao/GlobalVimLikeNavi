@@ -1,5 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::thread;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Wry};
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
@@ -17,6 +21,9 @@ static CAPS_DOWN: AtomicBool = AtomicBool::new(false);
 static DID_REMAP: AtomicBool = AtomicBool::new(false);
 static IS_PAUSED: AtomicBool = AtomicBool::new(false);
 static mut HOOK: HHOOK = HHOOK(0);
+// Store the menu item handle safely
+static TRAY_TOGGLE_ITEM: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
+static TRAY_STATUS_ITEM: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
 
 // Helper to send key input
 unsafe fn send_key(vk: VIRTUAL_KEY, up: bool) {
@@ -119,26 +126,43 @@ unsafe extern "system" fn low_level_keyboard_proc(
 
         match vk {
             // Standard Vim
-            VK_H => { send_key(VK_LEFT, is_up); handled = true; },
-            VK_J => { send_key(VK_DOWN, is_up); handled = true; },
-            VK_K => { send_key(VK_UP, is_up); handled = true; },
-            VK_L => { send_key(VK_RIGHT, is_up); handled = true; },
-            
+            VK_H => {
+                send_key(VK_LEFT, is_up);
+                handled = true;
+            }
+            VK_J => {
+                send_key(VK_DOWN, is_up);
+                handled = true;
+            }
+            VK_K => {
+                send_key(VK_UP, is_up);
+                handled = true;
+            }
+            VK_L => {
+                send_key(VK_RIGHT, is_up);
+                handled = true;
+            }
+
             // Editing
-            VK_I => { send_key(VK_DELETE, is_up); handled = true; },
-            
+            VK_I => {
+                send_key(VK_DELETE, is_up);
+                handled = true;
+            }
+
             // Code Snippets
             VK_N => {
                 if is_down {
-                    for _ in 0..6 { send_unicode(34); }
+                    for _ in 0..6 {
+                        send_unicode(34);
+                    }
                     for _ in 0..3 {
                         send_key(VK_LEFT, false);
                         send_key(VK_LEFT, true);
                     }
                 }
                 handled = true;
-            },
-            
+            }
+
             // Word Navigation
             VK_W => {
                 // Ctrl + Right
@@ -150,7 +174,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     send_key(VK_LCONTROL, true);
                 }
                 handled = true;
-            },
+            }
             VK_B => {
                 // Ctrl + Left
                 if is_down {
@@ -161,11 +185,17 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     send_key(VK_LCONTROL, true);
                 }
                 handled = true;
-            },
-            
+            }
+
             // Home / End
-            VK_A => { send_key(VK_HOME, is_up); handled = true; },
-            VK_E => { send_key(VK_END, is_up); handled = true; },
+            VK_A => {
+                send_key(VK_HOME, is_up);
+                handled = true;
+            }
+            VK_E => {
+                send_key(VK_END, is_up);
+                handled = true;
+            }
 
             // Fast Scroll (10x)
             VK_U => {
@@ -176,7 +206,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
                 handled = true;
-            },
+            }
             VK_D => {
                 if is_down {
                     for _ in 0..10 {
@@ -185,7 +215,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     }
                 }
                 handled = true;
-            },
+            }
 
             // New Line (End + Enter)
             VK_O => {
@@ -196,8 +226,8 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     send_key(VK_RETURN, true);
                 }
                 handled = true;
-            },
-            
+            }
+
             _ => {}
         }
 
@@ -212,12 +242,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
 
 fn start_keyboard_hook() {
     thread::spawn(|| unsafe {
-        let hook = SetWindowsHookExA(
-            WH_KEYBOARD_LL,
-            Some(low_level_keyboard_proc),
-            HMODULE(0),
-            0,
-        );
+        let hook = SetWindowsHookExA(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), HMODULE(0), 0);
 
         match hook {
             Ok(h) => {
@@ -246,8 +271,24 @@ fn get_status() -> String {
 }
 
 #[tauri::command]
-fn set_paused(paused: bool) -> String {
+fn set_paused(app: AppHandle, paused: bool) -> String {
     IS_PAUSED.store(paused, Ordering::SeqCst);
+    
+    // Update Tray Menu Text
+    if let Ok(guard) = TRAY_TOGGLE_ITEM.lock() {
+        if let Some(item) = &*guard {
+            let _ = item.set_text(if paused { "Resume Service" } else { "Pause Service" });
+        }
+    }
+    if let Ok(guard) = TRAY_STATUS_ITEM.lock() {
+        if let Some(item) = &*guard {
+            let _ = item.set_text(if paused { "Status: Paused" } else { "Status: Running" });
+        }
+    }
+    
+    // Emit event for UI to stay in sync if called from elsewhere (sanity check)
+    let _ = app.emit("status-update", paused);
+
     get_status()
 }
 
@@ -256,7 +297,49 @@ pub fn run() {
     start_keyboard_hook();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let status_i = MenuItem::with_id(app, "status", "Status: Running", false, None::<&str>)?;
+            let toggle_i = MenuItem::with_id(app, "toggle", "Pause Service", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            
+            // Store handles
+            if let Ok(mut guard) = TRAY_TOGGLE_ITEM.lock() {
+                *guard = Some(toggle_i.clone());
+            }
+            if let Ok(mut guard) = TRAY_STATUS_ITEM.lock() {
+                *guard = Some(status_i.clone());
+            }
+
+            let menu = Menu::with_items(app, &[&status_i, &toggle_i, &quit_i])?;
+
+            let _tray = TrayIconBuilder::with_id("tray")
+                .menu(&menu)
+                .icon(app.default_window_icon().unwrap().clone())
+                .on_menu_event(move |app, event| {
+                    match event.id.as_ref() {
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        "toggle" => {
+                            let paused = !IS_PAUSED.load(Ordering::SeqCst);
+                            IS_PAUSED.store(paused, Ordering::SeqCst);
+                            
+                            // Update Text
+                            let _ = toggle_i.set_text(if paused { "Resume Service" } else { "Pause Service" });
+                            let _ = status_i.set_text(if paused { "Status: Paused" } else { "Status: Running" });
+                            
+                            // Emit event to frontend
+                            let _ = app.emit("status-update", paused); 
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![get_status, set_paused])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
