@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
@@ -273,11 +273,11 @@ fn get_status() -> String {
 #[tauri::command]
 fn set_paused(app: AppHandle, paused: bool) -> String {
     IS_PAUSED.store(paused, Ordering::SeqCst);
-    
+
     // Update Tray Menu Text
     if let Ok(guard) = TRAY_TOGGLE_ITEM.lock() {
         if let Some(item) = &*guard {
-            let _ = item.set_text(if paused { "Resume Service" } else { "Pause Service" });
+            let _ = item.set_text(if paused { "Start Service" } else { "Stop Service" });
         }
     }
     if let Ok(guard) = TRAY_STATUS_ITEM.lock() {
@@ -285,7 +285,7 @@ fn set_paused(app: AppHandle, paused: bool) -> String {
             let _ = item.set_text(if paused { "Status: Paused" } else { "Status: Running" });
         }
     }
-    
+
     // Emit event for UI to stay in sync if called from elsewhere (sanity check)
     let _ = app.emit("status-update", paused);
 
@@ -299,11 +299,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .setup(|app| {
             let status_i = MenuItem::with_id(app, "status", "Status: Running", false, None::<&str>)?;
-            let toggle_i = MenuItem::with_id(app, "toggle", "Pause Service", true, None::<&str>)?;
+            let toggle_i = MenuItem::with_id(app, "toggle", "Stop Service", true, None::<&str>)?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let show_i = MenuItem::with_id(app, "show", "Open window", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            
+
             // Store handles
             if let Ok(mut guard) = TRAY_TOGGLE_ITEM.lock() {
                 *guard = Some(toggle_i.clone());
@@ -312,26 +320,32 @@ pub fn run() {
                 *guard = Some(status_i.clone());
             }
 
-            let menu = Menu::with_items(app, &[&status_i, &toggle_i, &quit_i])?;
+            let menu = Menu::with_items(app, &[&status_i, &toggle_i, &sep, &show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::with_id("tray")
                 .menu(&menu)
                 .icon(app.default_window_icon().unwrap().clone())
                 .on_menu_event(move |app, event| {
                     match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                         "quit" => {
                             app.exit(0);
                         }
                         "toggle" => {
                             let paused = !IS_PAUSED.load(Ordering::SeqCst);
                             IS_PAUSED.store(paused, Ordering::SeqCst);
-                            
+
                             // Update Text
-                            let _ = toggle_i.set_text(if paused { "Resume Service" } else { "Pause Service" });
+                            let _ = toggle_i.set_text(if paused { "Start Service" } else { "Stop Service" });
                             let _ = status_i.set_text(if paused { "Status: Paused" } else { "Status: Running" });
-                            
+
                             // Emit event to frontend
-                            let _ = app.emit("status-update", paused); 
+                            let _ = app.emit("status-update", paused);
                         }
                         _ => {}
                     }
