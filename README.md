@@ -34,7 +34,7 @@
 
 ## Screenshots
 
-![](.\public\GlobalVimLikeNavi.png)
+![](public/GlobalVimLikeNavi.png)
 
 ## Architecture
 
