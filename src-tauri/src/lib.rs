@@ -2,8 +2,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-    VK_CAPITAL, VK_DOWN, VK_H, VK_J, VK_K, VK_L, VK_LEFT, VK_RIGHT, VK_UP,
+    SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_A, VK_B, VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END,
+    VK_H, VK_HOME, VK_I, VK_J, VK_K, VK_L, VK_LCONTROL, VK_LEFT, VK_N, VK_O, VK_RETURN, VK_RIGHT,
+    VK_U, VK_UP, VK_W,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageA, GetMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HHOOK,
@@ -37,6 +39,39 @@ unsafe fn send_key(vk: VIRTUAL_KEY, up: bool) {
     };
 
     SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+}
+
+// Helper to send unicode character
+unsafe fn send_unicode(ch: u16) {
+    // Key Down
+    let input_down = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: ch,
+                dwFlags: KEYEVENTF_UNICODE,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    // Key Up
+    let input_up = INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: ch,
+                dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    SendInput(&[input_down, input_up], std::mem::size_of::<INPUT>() as i32);
 }
 
 // Low-level keyboard hook callback
@@ -80,17 +115,94 @@ unsafe extern "system" fn low_level_keyboard_proc(
 
     // Handle Remapping (only if CapsLock is held)
     if CAPS_DOWN.load(Ordering::SeqCst) {
-        let target = match vk {
-            VK_H => Some(VK_LEFT),
-            VK_J => Some(VK_DOWN),
-            VK_K => Some(VK_UP),
-            VK_L => Some(VK_RIGHT),
-            _ => None,
-        };
+        let mut handled = false;
 
-        if let Some(target_key) = target {
+        match vk {
+            // Standard Vim
+            VK_H => { send_key(VK_LEFT, is_up); handled = true; },
+            VK_J => { send_key(VK_DOWN, is_up); handled = true; },
+            VK_K => { send_key(VK_UP, is_up); handled = true; },
+            VK_L => { send_key(VK_RIGHT, is_up); handled = true; },
+            
+            // Editing
+            VK_I => { send_key(VK_DELETE, is_up); handled = true; },
+            
+            // Code Snippets
+            VK_N => {
+                if is_down {
+                    for _ in 0..6 { send_unicode(34); }
+                    for _ in 0..3 {
+                        send_key(VK_LEFT, false);
+                        send_key(VK_LEFT, true);
+                    }
+                }
+                handled = true;
+            },
+            
+            // Word Navigation
+            VK_W => {
+                // Ctrl + Right
+                if is_down {
+                    send_key(VK_LCONTROL, false);
+                    send_key(VK_RIGHT, false);
+                } else {
+                    send_key(VK_RIGHT, true);
+                    send_key(VK_LCONTROL, true);
+                }
+                handled = true;
+            },
+            VK_B => {
+                // Ctrl + Left
+                if is_down {
+                    send_key(VK_LCONTROL, false);
+                    send_key(VK_LEFT, false);
+                } else {
+                    send_key(VK_LEFT, true);
+                    send_key(VK_LCONTROL, true);
+                }
+                handled = true;
+            },
+            
+            // Home / End
+            VK_A => { send_key(VK_HOME, is_up); handled = true; },
+            VK_E => { send_key(VK_END, is_up); handled = true; },
+
+            // Fast Scroll (10x)
+            VK_U => {
+                if is_down {
+                    for _ in 0..10 {
+                        send_key(VK_UP, false);
+                        send_key(VK_UP, true);
+                    }
+                }
+                handled = true;
+            },
+            VK_D => {
+                if is_down {
+                    for _ in 0..10 {
+                        send_key(VK_DOWN, false);
+                        send_key(VK_DOWN, true);
+                    }
+                }
+                handled = true;
+            },
+
+            // New Line (End + Enter)
+            VK_O => {
+                if is_down {
+                    send_key(VK_END, false);
+                    send_key(VK_END, true);
+                    send_key(VK_RETURN, false);
+                    send_key(VK_RETURN, true);
+                }
+                handled = true;
+            },
+            
+            _ => {}
+        }
+
+        if handled {
             DID_REMAP.store(true, Ordering::SeqCst);
-            send_key(target_key, is_up);
             return LRESULT(1); // Swallow original key
         }
     }
