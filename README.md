@@ -62,8 +62,8 @@ For a deep dive into the technical implementation, see [how_does_it_work.md](how
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/global-vim-like-navi.git
-    cd global-vim-like-navi
+    git clone https://github.com/XueshiQiao/GlobalVimLikeNavi.git
+    cd GlobalVimLikeNavi
     ```
 
 2.  **Install dependencies:**
@@ -74,6 +74,8 @@ For a deep dive into the technical implementation, see [how_does_it_work.md](how
 3.  **Run in development mode:**
     ```bash
     npm run tauri dev
+    # or
+    pnpm tauri dev
     ```
     This will start the React frontend and the Rust backend.
 
