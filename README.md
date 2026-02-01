@@ -1,20 +1,36 @@
 # Global Vim-Like Navi
 
-**Global Vim-Like Navi** is a lightweight Windows utility that brings Vim-style navigation (H/J/K/L) to the entire operating system. It allows you to use `CapsLock` + `H/J/K/L` as Arrow keys in any application.
+**Global Vim-Like Navi** is a lightweight Windows utility that brings Vim-style navigation (H/J/K/L) to the entire operating system. It allows you to use `CapsLock` + `Key` as shortcuts in any application.
 
 ## Features
 
 -   **Global Remapping:** Works in every application (Editors, Browser, Explorer, etc.).
--   **Vim-Style Navigation:**
-    -   `CapsLock` + `H` → Left Arrow
-    -   `CapsLock` + `J` → Down Arrow
-    -   `CapsLock` + `K` → Up Arrow
-    -   `CapsLock` + `L` → Right Arrow
 -   **Smart CapsLock Handling:**
-    -   If used as a modifier (held down with H/J/K/L), the CapsLock state (and light) does **not** toggle.
-    -   If tapped and released quickly (without pressing H/J/K/L), it toggles CapsLock on/off as normal.
+    -   If used as a modifier (held down with mapped keys), the CapsLock state (and light) does **not** toggle.
+    -   If tapped and released quickly (without pressing other keys), it toggles CapsLock on/off as normal.
 -   **Native Performance:** Built with **Rust** and the Windows API for zero-latency interception.
--   **Modern UI:** Simple dashboard built with React + TypeScript.
+-   **System Tray:** Supports minimizing to tray, pausing the service (Gaming Mode), and starting with Windows.
+
+## Key Mappings
+
+### Basic Navigation
+-   `CapsLock` + `H` → **Left Arrow**
+-   `CapsLock` + `J` → **Down Arrow**
+-   `CapsLock` + `K` → **Up Arrow**
+-   `CapsLock` + `L` → **Right Arrow**
+
+### Extended Navigation
+-   `CapsLock` + `W` → **Next Word** (Ctrl + Right)
+-   `CapsLock` + `B` → **Previous Word** (Ctrl + Left)
+-   `CapsLock` + `A` → **Home** (Start of line)
+-   `CapsLock` + `E` → **End** (End of line)
+-   `CapsLock` + `U` → **Up 10x** (Fast Scroll Up)
+-   `CapsLock` + `D` → **Down 10x** (Fast Scroll Down)
+
+### Editing Shortcuts
+-   `CapsLock` + `I` → **Delete**
+-   `CapsLock` + `O` → **New Line** (End + Enter)
+-   `CapsLock` + `N` → **Docstring Snippet** (Inserts `""""""` and centers cursor)
 
 ## Screenshots
 
