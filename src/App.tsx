@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import "./App.css";
@@ -22,11 +23,12 @@ function App() {
         unlisten = await listen<boolean>("status-update", (event) => {
           const paused = event.payload;
           setStatus(paused ? "Paused" : "Running");
-          // Optionally show toast here too?
         });
-      } catch (e) {
-        setStatus("Error connecting to backend");
+      } catch (e: any) {
+        setStatus(`Error: ${e?.message || e || "Unknown backend error"}`);
         console.error(e);
+      } finally {
+        await getCurrentWindow().show();
       }
     }
     init();
