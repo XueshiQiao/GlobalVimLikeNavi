@@ -13,6 +13,12 @@ function App() {
   const [autostart, setAutostart] = useState(false);
   const [appVersion, setAppVersion] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  
+  // Mappings State
+  const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [newKey, setNewKey] = useState<number | null>(null);
+  const [newKeyDisplay, setNewKeyDisplay] = useState("");
+  const [newCommand, setNewCommand] = useState("");
 
   useEffect(() => {
     let unlisten: () => void;
@@ -25,6 +31,9 @@ function App() {
         setStatus(msg as string);
         const auto = await isEnabled();
         setAutostart(auto);
+
+        const maps = await invoke("get_mappings");
+        setMappings(maps as Record<string, string>);
 
         unlisten = await listen<boolean>("status-update", (event) => {
           const paused = event.payload;
@@ -48,6 +57,34 @@ function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  async function addMapping() {
+    if (!newKey || !newCommand) return;
+    try {
+        await invoke("add_mapping", { key: newKey, command: newCommand });
+        const maps = await invoke("get_mappings");
+        setMappings(maps as Record<string, string>);
+        setNewKey(null);
+        setNewKeyDisplay("");
+        setNewCommand("");
+        showToast("Mapping added", "success");
+    } catch (e) {
+        console.error(e);
+        showToast("Failed to add mapping", "error");
+    }
+  }
+
+  async function removeMapping(key: number) {
+    try {
+        await invoke("remove_mapping", { key });
+        const maps = await invoke("get_mappings");
+        setMappings(maps as Record<string, string>);
+        showToast("Mapping removed", "success");
+    } catch (e) {
+        console.error(e);
+        showToast("Failed to remove mapping", "error");
+    }
+  }
 
   async function togglePause() {
     try {
@@ -151,6 +188,65 @@ function App() {
         >
            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${autostart ? 'translate-x-6' : 'translate-x-0'}`} />
         </button>
+      </div>
+
+      {/* Shell Mappings Card */}
+      <div className="w-full max-w-md bg-surface border border-slate-700 rounded-2xl p-6 shadow-xl mb-8">
+        <h2 className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-4">Custom Shell Mappings (Caps+Shift+Key)</h2>
+        
+        <div className="flex gap-2 mb-4">
+            <input 
+                type="text" 
+                placeholder="Press Key"
+                value={newKeyDisplay}
+                readOnly
+                onKeyDown={(e) => {
+                    e.preventDefault();
+                    // Basic filtering
+                    if (["Shift", "Control", "Alt", "Meta", "CapsLock"].includes(e.key)) return;
+                    setNewKey(e.keyCode);
+                    setNewKeyDisplay(e.key.toUpperCase());
+                }}
+                className="w-24 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-200 text-center text-sm focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+            />
+            <input 
+                type="text" 
+                placeholder="Command (e.g. calc.exe)"
+                value={newCommand}
+                onChange={(e) => setNewCommand(e.target.value)}
+                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <button 
+                onClick={addMapping}
+                disabled={!newKey || !newCommand}
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-3 transition-colors"
+            >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            </button>
+        </div>
+
+        <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+            {Object.entries(mappings).map(([k, cmd]) => (
+                <div key={k} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-2 px-3 border border-slate-700/50 group">
+                    <div className="flex items-center gap-2">
+                        <Kbd>C</Kbd>
+                        <span className="text-slate-500 font-light text-xs">+</span>
+                        <Kbd>S</Kbd>
+                        <span className="text-slate-500 font-light text-xs">+</span>
+                        <Kbd>{String.fromCharCode(parseInt(k))}</Kbd>
+                    </div>
+                    <div className="flex items-center gap-3 overflow-hidden flex-1 justify-end">
+                        <span className="text-xs text-slate-400 truncate max-w-[150px] font-mono" title={cmd}>{cmd}</span>
+                        <button onClick={() => removeMapping(parseInt(k))} className="text-slate-600 hover:text-red-400 transition-colors">
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                    </div>
+                </div>
+            ))}
+            {Object.keys(mappings).length === 0 && (
+                <div className="text-center text-slate-500 text-xs py-2 italic">No custom mappings yet</div>
+            )}
+        </div>
       </div>
 
       {/* Mappings Grid */}

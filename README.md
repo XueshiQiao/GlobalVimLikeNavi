@@ -32,6 +32,11 @@
 -   `CapsLock` + `O` → **New Line** (End + Enter)
 -   `CapsLock` + `N` → **Docstring Snippet** (Inserts `""""""` and centers cursor)
 
+### Shell Mappings
+-   `CapsLock` + `Shift` + `[Key]` → **Execute Shell Command**
+    -   User configurable via the UI.
+    -   Example: `CapsLock` + `Shift` + `C` → `calc.exe`
+
 ## Screenshots
 
 ![](public/GlobalVimLikeNavi.png)

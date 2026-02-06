@@ -10,10 +10,14 @@ use tauri_plugin_updater::UpdaterExt;
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_A, VK_B, VK_BACK, VK_CAPITAL, VK_D, VK_DELETE, VK_DOWN, VK_E, VK_END,
+    KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_A, VK_B, VK_BACK, VK_CAPITAL, VK_D, VK_DOWN, VK_E, VK_END,
     VK_H, VK_HOME, VK_I, VK_J, VK_K, VK_L, VK_LCONTROL, VK_LEFT, VK_N, VK_O, VK_RETURN, VK_RIGHT,
-    VK_U, VK_UP, VK_W,
+    VK_U, VK_UP, VK_W, VK_SHIFT, GetAsyncKeyState,
 };
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use std::os::windows::process::CommandExt; // For creation_flags if needed
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageA, GetMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HHOOK,
     KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
@@ -27,6 +31,42 @@ static mut HOOK: HHOOK = HHOOK(0);
 // Store the menu item handle safely
 static TRAY_TOGGLE_ITEM: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
 static TRAY_STATUS_ITEM: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
+static SHELL_MAPPINGS: Mutex<Option<HashMap<u16, String>>> = Mutex::new(None);
+
+// Helper for persistence
+fn get_config_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_data_dir().ok().map(|p| p.join("shell_mappings.json"))
+}
+
+fn load_mappings_from_disk(app: &AppHandle) {
+    if let Some(path) = get_config_path(app) {
+        if let Ok(content) = fs::read_to_string(path) {
+            if let Ok(mappings) = serde_json::from_str::<HashMap<u16, String>>(&content) {
+                *SHELL_MAPPINGS.lock().unwrap() = Some(mappings);
+                return;
+            }
+        }
+    }
+    // Initialize if empty or failed
+    let mut guard = SHELL_MAPPINGS.lock().unwrap();
+    if guard.is_none() {
+        *guard = Some(HashMap::new());
+    }
+}
+
+fn save_mappings_to_disk(app: &AppHandle) {
+    if let Some(path) = get_config_path(app) {
+        if let Some(mappings) = &*SHELL_MAPPINGS.lock().unwrap() {
+            if let Ok(content) = serde_json::to_string(mappings) {
+                // Ensure dir exists
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(path, content);
+            }
+        }
+    }
+}
 
 static ICON_RUNNING: &[u8] = include_bytes!("../icons/icon.png");
 static ICON_DISABLED: &[u8] = include_bytes!("../icons/icon_disabled.png");
@@ -130,7 +170,29 @@ unsafe extern "system" fn low_level_keyboard_proc(
     if CAPS_DOWN.load(Ordering::SeqCst) {
         let mut handled = false;
 
-        match vk {
+        // Check for Shell Mappings (Caps + Shift + Key)
+        let shift_down = (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
+        
+        if shift_down && is_down {
+             let guard = SHELL_MAPPINGS.lock().unwrap();
+             if let Some(mappings) = &*guard {
+                 if let Some(cmd) = mappings.get(&vk.0) {
+                     let cmd_str = cmd.clone();
+                     thread::spawn(move || {
+                         // CREATE_NO_WINDOW = 0x08000000
+                         let _ = std::process::Command::new("cmd")
+                            .arg("/C")
+                            .arg(&cmd_str)
+                            .creation_flags(0x08000000) 
+                            .spawn();
+                     });
+                     handled = true;
+                 }
+             }
+        }
+
+        if !handled {
+            match vk {
             // Standard Vim
             VK_H => {
                 send_key(VK_LEFT, is_up);
@@ -236,8 +298,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
 
             _ => {}
         }
+    }
 
-        if handled {
+    if handled {
             DID_REMAP.store(true, Ordering::SeqCst);
             return LRESULT(1); // Swallow original key
         }
@@ -290,6 +353,34 @@ fn update_tray_visuals(app: &AppHandle, paused: bool) {
 }
 
 #[tauri::command]
+fn add_mapping(app: AppHandle, key: u16, command: String) {
+    {
+        let mut guard = SHELL_MAPPINGS.lock().unwrap();
+        if let Some(map) = guard.as_mut() {
+            map.insert(key, command);
+        }
+    }
+    save_mappings_to_disk(&app);
+}
+
+#[tauri::command]
+fn remove_mapping(app: AppHandle, key: u16) {
+    {
+        let mut guard = SHELL_MAPPINGS.lock().unwrap();
+        if let Some(map) = guard.as_mut() {
+            map.remove(&key);
+        }
+    }
+    save_mappings_to_disk(&app);
+}
+
+#[tauri::command]
+fn get_mappings() -> HashMap<u16, String> {
+    let guard = SHELL_MAPPINGS.lock().unwrap();
+    guard.clone().unwrap_or_default()
+}
+
+#[tauri::command]
 fn get_status() -> String {
     if IS_PAUSED.load(Ordering::SeqCst) {
         "Paused".to_string()
@@ -326,6 +417,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            load_mappings_from_disk(app.handle());
             let status_i = MenuItem::with_id(app, "status", "Status: Running", false, None::<&str>)?;
             let toggle_i = MenuItem::with_id(app, "toggle", "Stop Service", true, None::<&str>)?;
             let check_update_i = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
@@ -429,7 +521,24 @@ pub fn run() {
                             .build(app)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_status, set_paused])
+        .invoke_handler(tauri::generate_handler![get_status, set_paused, add_mapping, remove_mapping, get_mappings])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_mapping_serialization() {
+        let mut map = HashMap::new();
+        map.insert(65, "calc.exe".to_string());
+        
+        let json = serde_json::to_string(&map).unwrap();
+        assert_eq!(json, "{\"65\":\"calc.exe\"}");
+        
+        let decoded: HashMap<u16, String> = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.get(&65).unwrap(), "calc.exe");
+    }
 }

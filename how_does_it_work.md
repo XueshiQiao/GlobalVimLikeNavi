@@ -37,6 +37,9 @@ When `CAPS_DOWN` is active, the following transformations are applied:
 
 The original letter keys are swallowed, and the arrow keys are injected into the system input stream using the `SendInput` API.
 
+### 3. Shell Execution (Caps+Shift+Key)
+We also check for `CapsLock` + `Shift` combinations. If a user-defined mapping exists (e.g., Key `C` -> `calc.exe`), we spawn a detached `std::process::Command` to execute the shell command. This is handled in a separate thread to prevent blocking the keyboard hook.
+
 ## Safety and Performance
 - **Atomic State:** We use `AtomicBool` to track key states, ensuring thread-safe communication between the hook thread and the rest of the application.
 - **Minimal Overhead:** The hook callback is written to be extremely fast. It performs simple integer comparisons and returns as quickly as possible to avoid "input lag" system-wide.
