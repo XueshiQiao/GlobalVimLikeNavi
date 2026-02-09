@@ -17,19 +17,19 @@ flowchart TD
     D --> F["CGEventTap Callback"]
     E --> F
 
-    F --> G{"Injected by us?\n(EVENT_SOURCE_USER_DATA\n== 0x4756_4C4E)"}
+    F --> G{"Injected by us?<br/>(EVENT_SOURCE_USER_DATA<br/>== 0x4756_4C4E)"}
     G -- Yes --> PASS["Pass through unchanged"]
     G -- No --> H{"IS_PAUSED?"}
     H -- Yes --> PASS
     H -- No --> I{"Event type?"}
 
-    I -- "F18 KeyDown" --> J["CAPS_DOWN = true\nDID_REMAP = false"]
-    J --> SWALLOW["Swallow event\n(set type → Null)"]
+    I -- "F18 KeyDown" --> J["CAPS_DOWN = true<br/>DID_REMAP = false"]
+    J --> SWALLOW["Swallow event<br/>(set type → Null)"]
 
     I -- "F18 KeyUp" --> K{"DID_REMAP?"}
     K -- "Yes (used as modifier)" --> L["CAPS_DOWN = false"]
     L --> SWALLOW
-    K -- "No (tap only)" --> M["CAPS_DOWN = false\ntoggle_caps_lock()\nvia IOKit"]
+    K -- "No (tap only)" --> M["CAPS_DOWN = false<br/>toggle_caps_lock()<br/>via IOKit"]
     M --> SWALLOW
 
     I -- "CapsLock FlagsChanged" --> SWALLOW
@@ -38,30 +38,18 @@ flowchart TD
     N -- No --> PASS
     N -- Yes --> O{"Shift held?"}
 
-    O -- Yes --> P{"Shell mapping\nexists for key?"}
-    P -- Yes --> Q["Convert mac→JS keycode\nSpawn: sh -c command\nDID_REMAP = true"]
+    O -- Yes --> P{"Shell mapping<br/>exists for key?"}
+    P -- Yes --> Q["Convert mac→JS keycode<br/>Spawn: sh -c command<br/>DID_REMAP = true"]
     Q --> SWALLOW
     P -- No --> R{"Built-in remap?"}
 
     O -- No --> R
-    R -- "H/J/K/L" --> S["Inject arrow key\nDID_REMAP = true"]
+    R -- "H/J/K/L" --> S["Inject arrow key<br/>DID_REMAP = true"]
     S --> SWALLOW
-    R -- "W" --> T["Inject Option+Right\nDID_REMAP = true"]
-    T --> SWALLOW
-    R -- "B" --> U["Inject Option+Left\nDID_REMAP = true"]
-    U --> SWALLOW
-    R -- "A" --> V["Inject Cmd+Left\nDID_REMAP = true"]
-    V --> SWALLOW
-    R -- "E" --> W["Inject Cmd+Right\nDID_REMAP = true"]
-    W --> SWALLOW
-    R -- "I" --> X["Inject Backspace\nDID_REMAP = true"]
-    X --> SWALLOW
-    R -- "U/D" --> Y["Inject 10x Up/Down\nDID_REMAP = true"]
+    R -- "U/D" --> Y["Inject 10x Up/Down<br/>DID_REMAP = true"]
     Y --> SWALLOW
-    R -- "O" --> Z["Inject Cmd+Right, Enter\nDID_REMAP = true"]
+    R -- "other keys" --> Z["other mapping<br/>DID_REMAP = true"]
     Z --> SWALLOW
-    R -- "N" --> AA["Inject 6x quote, 3x Left\nDID_REMAP = true"]
-    AA --> SWALLOW
     R -- "No match" --> PASS
 ```
 
