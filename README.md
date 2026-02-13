@@ -20,8 +20,8 @@
 -   `CapsLock` + `L` → **Right Arrow**
 
 ### Extended Navigation
--   `CapsLock` + `W` → **Next Word** (Ctrl + Right)
--   `CapsLock` + `B` → **Previous Word** (Ctrl + Left)
+-   `CapsLock` + `P` → **Next Word** (Ctrl + Right)
+-   `CapsLock` + `Y` → **Previous Word** (Ctrl + Left)
 -   `CapsLock` + `A` → **Home** (Start of line)
 -   `CapsLock` + `E` → **End** (End of line)
 -   `CapsLock` + `U` → **Up 10x** (Fast Scroll Up)

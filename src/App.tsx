@@ -261,8 +261,8 @@ function App() {
           
           <div className="h-2"></div>
 
-          <MappingRow keyChar="W" action="Word Forward" icon="WordRight" />
-          <MappingRow keyChar="B" action="Word Back" icon="WordLeft" />
+          <MappingRow keyChar="P" action="Word Forward" icon="WordRight" />
+          <MappingRow keyChar="Y" action="Word Back" icon="WordLeft" />
 
           <div className="h-2"></div>
 

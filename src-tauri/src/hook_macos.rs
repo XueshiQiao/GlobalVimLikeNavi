@@ -26,8 +26,8 @@ const KC_H: u16 = 0x04;
 const KC_J: u16 = 0x26;
 const KC_K: u16 = 0x28;
 const KC_L: u16 = 0x25;
-const KC_W: u16 = 0x0D;
-const KC_B: u16 = 0x0B;
+const KC_P: u16 = 0x23;
+const KC_Y: u16 = 0x10;
 const KC_A: u16 = 0x00;
 const KC_E: u16 = 0x0E;
 const KC_U: u16 = 0x20;
@@ -216,14 +216,14 @@ fn handle_caps_remap(keycode: u16, key_down: bool, shift_held: bool) -> bool {
             true
         }
 
-        // Word Forward: Option+Right
-        KC_W => {
+        // Word Forward (P): Option+Right
+        KC_P => {
             post_key(KC_RIGHT, key_down, CGEventFlags::CGEventFlagAlternate);
             true
         }
 
-        // Word Back: Option+Left
-        KC_B => {
+        // Word Back (Y): Option+Left
+        KC_Y => {
             post_key(KC_LEFT, key_down, CGEventFlags::CGEventFlagAlternate);
             true
         }

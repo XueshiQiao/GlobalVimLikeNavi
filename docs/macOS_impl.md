@@ -215,8 +215,8 @@ macOS automatically disables an event tap if the callback takes too long. The ca
 |--------|---------|-------|
 | Arrow keys (H/J/K/L) | VK_LEFT/DOWN/UP/RIGHT | KC_LEFT/DOWN/UP/RIGHT |
 | Backspace (I) | VK_BACK | KC_DELETE (0x33) |
-| Word Forward (W) | Ctrl+Right | **Option+Right** |
-| Word Back (B) | Ctrl+Left | **Option+Left** |
+| Word Forward (P) | Ctrl+Right | **Option+Right** |
+| Word Back (Y) | Ctrl+Left | **Option+Left** |
 | Home / Start of line (A) | Home key | **Cmd+Left** |
 | End of line (E) | End key | **Cmd+Right** |
 | New Line (O) | End, Enter | **Cmd+Right, Enter** |
